@@ -5,6 +5,7 @@ import io.reactivex.schedulers.Schedulers
 import org.junit.Before
 import org.mockito.Mockito
 import org.mockito.MockitoAnnotations
+import org.mockito.stubbing.OngoingStubbing
 
 open class BaseTest {
 
@@ -26,4 +27,6 @@ open class BaseTest {
     }
 
     fun <T> uninitialized(): T = null as T
+
+    fun <T> whenever(methodCall: T): OngoingStubbing<T> = Mockito.`when`(methodCall)
 }
