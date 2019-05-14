@@ -1,18 +1,19 @@
 package com.login.mvvm.login_test
 
 import android.content.res.Resources
-import android.util.Log
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.login.mvvm.login_test.TestUtil.getJsonFromResource
 import com.login.mvvm.login_test.data.AuthenApi
 import com.login.mvvm.login_test.data.BaseException
 import com.login.mvvm.login_test.data.model.Token
 import com.login.mvvm.login_test.data.repository.AuthenRepository
-import com.login.mvvm.login_test.rx.ScheduleProvider
 import com.login.mvvm.login_test.rx.SchedulerProviderImpl
 import com.login.mvvm.login_test.screen.ui.fragment.login.LoginViewModel
+import com.login.mvvm.login_test.utils.LoginValidator
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
 import io.reactivex.observers.TestObserver
-import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert
 import org.junit.Rule
@@ -22,10 +23,7 @@ import org.junit.runner.RunWith
 import org.mockito.ArgumentMatchers
 import org.mockito.Mock
 import org.mockito.Spy
-import org.robolectric.RobolectricTestRunner
 import io.reactivex.Single
-import io.reactivex.android.plugins.RxAndroidPlugins
-import io.reactivex.schedulers.Schedulers
 import okhttp3.ResponseBody
 import org.mockito.Mockito.*
 import org.mockito.junit.MockitoJUnitRunner
@@ -76,12 +74,22 @@ class LoginViewModelTest : BaseApiTest() {
     @Test
     fun getToken_valid_succeededResponse() {
 
-        // define behavior
+        /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenReturn(
-            Single.just(Token("tiendat@gmail.com", "123456789"))
+            Single.just(Token("access token", "refresh token"))
         )
 
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns true
+        every { LoginValidator.isValidPassword(any()) } returns true
 
+        /** action */
+        loginViewModel.login("tiendat@gmail.com", "12345678")
+
+        /** test */
+        verify(authenRepository).login("tiendat@gmail.com", "12345678")
+
+        Assert.assertEquals(true, loginViewModel.isLoginSuccess.value)
     }
 
     /**
@@ -90,25 +98,69 @@ class LoginViewModelTest : BaseApiTest() {
     @Test
     fun getToken_invalid_succeededResponse() {
 
+        /** define behavior */
+        `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenReturn(
+            Single.just(Token())
+        )
+
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns true
+        every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** action */
+        loginViewModel.login("tiendat@gmail.com", "12345678")
+
+        /** test */
+        verify(authenRepository).login("tiendat@gmail.com", "12345678")
+
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
     }
 
     /**
-     * Test for case connect server failed (400 response)
+     * Case invalid input
+     */
+    @Test
+    fun getToken_invalid_input() {
+
+        /** define behavior */
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns false
+        every { LoginValidator.isValidPassword(any()) } returns false
+
+        /** action */
+        loginViewModel.login("tiendatgmail.com", "178")
+
+        /** test */
+        verify(authenRepository, never()).login("tiendatgmail.com", "178")
+
+        assert(loginViewModel.token == null)
+
+        Assert.assertEquals("Email or Password invalid", loginViewModel.error.value)
+
+    }
+
+    /**
+     * Test for case connect server failed (404 response)
      */
     @Test
     fun getToken_failedResponse() {
         val errorResponse = BaseException(BaseException.HTTP,
             HttpException(Response.error<String>(404, ResponseBody.create(null, " Some Error"))).response())
 
-        // define behavior
+        /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenReturn(
             Single.error(errorResponse)
         )
 
-        loginViewModel.login("dat@gmail.com", "123456")
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns true
+        every { LoginValidator.isValidPassword(any()) } returns true
 
-        // viewModel test
-        verify(authenRepository).login("dat@gmail.com", "123456")
+        /** action */
+        loginViewModel.login("tiendat@gmail.com", "12345678")
+
+        /** test */
+        verify(authenRepository).login("tiendat@gmail.com", "12345678")
 
         assert(loginViewModel.token == null)
 
@@ -134,15 +186,21 @@ class LoginViewModelTest : BaseApiTest() {
         // Enqueue request
         mockWebServer.enqueue(mockResponse)
 
-        // define behavior
+        /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenAnswer {
             authenApi.login("dat@gmail.com", "123456").toObservable().subscribe(testObserver)
             testObserver.awaitTerminalEvent(2, TimeUnit.SECONDS)
             Single.just(testObserver.values()[0])
         }
 
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns true
+        every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** action */
         loginViewModel.login("dat@gmail.com", "123456")
 
+        /** test */
         // equal http request
         val request = mockWebServer.takeRequest()
         Assert.assertEquals("/login?email=dat%40gmail.com&password=123456", request.path)
@@ -184,19 +242,25 @@ class LoginViewModelTest : BaseApiTest() {
         // Enqueue request
         mockWebServer.enqueue(mockResponse)
 
-        // define behavior
+        /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenAnswer {
             authenApi.login("dat@gmail.com", "123456").toObservable().subscribe(testObserver)
             testObserver.awaitTerminalEvent(2, TimeUnit.SECONDS)
             Single.error<Throwable>(errorResponse)
         }
 
+        mockkObject(LoginValidator)
+        every { LoginValidator.isValidEmail(any()) } returns true
+        every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** action */
         loginViewModel.login("dat@gmail.com", "123456")
 
         // equal http request
         val request = mockWebServer.takeRequest()
         Assert.assertEquals("/login?email=dat%40gmail.com&password=123456", request.path)
 
+        /** test */
         // equal token response
         testObserver.apply {
             assertNoValues()
