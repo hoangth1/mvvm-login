@@ -1,6 +1,7 @@
 package com.login.mvvm.login_test.di
 
 import android.provider.Contacts.SettingsColumns.KEY
+import com.login.mvvm.login_test.data.AuthenApi
 import com.login.mvvm.login_test.di.Properties.TIME_OUT
 import com.login.mvvm.login_test.rx.RxErrorHandlingCallAdapterFactory
 import com.login.mvvm.login_test.utils.BASE_URL
@@ -56,3 +57,6 @@ fun createAppRetrofit(okHttpClient: OkHttpClient): Retrofit =
         .client(okHttpClient)
         .build()
 
+fun createLAuthenApi(retrofit: Retrofit): AuthenApi {
+    return  retrofit.create(AuthenApi::class.java)
+}

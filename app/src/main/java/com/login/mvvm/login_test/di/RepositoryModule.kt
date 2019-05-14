@@ -5,7 +5,5 @@ import com.login.mvvm.login_test.data.repository.AuthenRepositoryImpl
 import org.koin.dsl.module.module
 
 val repositoryModule = module {
-    single { createAuthenRepository() }
+    single<AuthenRepository> {AuthenRepositoryImpl(get())}
 }
-
-fun createAuthenRepository(): AuthenRepository = AuthenRepositoryImpl()
