@@ -9,6 +9,7 @@ import com.login.mvvm.login_test.rx.ScheduleProvider
 import com.login.mvvm.login_test.screen.base.BaseViewModel
 import com.login.mvvm.login_test.utils.LoginValidator
 import io.reactivex.Scheduler
+import java.util.concurrent.TimeUnit
 
 class LoginViewModel(
     resources: Resources,
@@ -27,14 +28,23 @@ class LoginViewModel(
                 authenRepository.login(email, password)
                     .subscribeOn(scheduleProvider.io())
                     .observeOn(scheduleProvider.ui())
+                    .doOnSubscribe {
+                        isLoading.value = true
+                    }
                     .subscribe({
                         this@LoginViewModel.token = it
+                        isLoading.value = false
                         isLoginSuccess.value = it?.accessToken != null &&
                                 it.refreshToken != null
                     }, {
                         onError(it)
+                        isLoading.value = false
                     })
             )
         }
+    }
+
+    fun abc () {
+
     }
 }
