@@ -13,6 +13,8 @@ import com.login.mvvm.login_test.utils.LoginValidator
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.reactivex.Observable
+import io.reactivex.Observer
 import io.reactivex.observers.TestObserver
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert
@@ -24,6 +26,7 @@ import org.mockito.ArgumentMatchers
 import org.mockito.Mock
 import org.mockito.Spy
 import io.reactivex.Single
+import io.reactivex.schedulers.TestScheduler
 import okhttp3.ResponseBody
 import org.mockito.Mockito.*
 import org.mockito.junit.MockitoJUnitRunner
@@ -83,6 +86,9 @@ class LoginViewModelTest : BaseApiTest() {
         every { LoginValidator.isValidEmail(any()) } returns true
         every { LoginValidator.isValidPassword(any()) } returns true
 
+        /** pre-test */
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
+
         /** action */
         loginViewModel.login("tiendat@gmail.com", "12345678")
 
@@ -90,6 +96,11 @@ class LoginViewModelTest : BaseApiTest() {
         verify(authenRepository).login("tiendat@gmail.com", "12345678")
 
         Assert.assertEquals(true, loginViewModel.isLoginSuccess.value)
+
+        assert(
+            loginViewModel.token!!.accessToken == "access token" &&
+                    loginViewModel.token!!.refreshToken == "refresh token"
+        )
     }
 
     /**
@@ -106,6 +117,9 @@ class LoginViewModelTest : BaseApiTest() {
         mockkObject(LoginValidator)
         every { LoginValidator.isValidEmail(any()) } returns true
         every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** pre-test */
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
 
         /** action */
         loginViewModel.login("tiendat@gmail.com", "12345678")
@@ -127,6 +141,10 @@ class LoginViewModelTest : BaseApiTest() {
         every { LoginValidator.isValidEmail(any()) } returns false
         every { LoginValidator.isValidPassword(any()) } returns false
 
+        /** pre-test */
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
+        Assert.assertEquals(null, loginViewModel.error.value)
+
         /** action */
         loginViewModel.login("tiendatgmail.com", "178")
 
@@ -144,8 +162,10 @@ class LoginViewModelTest : BaseApiTest() {
      */
     @Test
     fun getToken_failedResponse() {
-        val errorResponse = BaseException(BaseException.HTTP,
-            HttpException(Response.error<String>(404, ResponseBody.create(null, " Some Error"))).response())
+        val errorResponse = BaseException(
+            BaseException.HTTP,
+            HttpException(Response.error<String>(404, ResponseBody.create(null, " Some Error"))).response()
+        )
 
         /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenReturn(
@@ -155,6 +175,10 @@ class LoginViewModelTest : BaseApiTest() {
         mockkObject(LoginValidator)
         every { LoginValidator.isValidEmail(any()) } returns true
         every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** pre-test */
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
+        Assert.assertEquals(null, loginViewModel.error.value)
 
         /** action */
         loginViewModel.login("tiendat@gmail.com", "12345678")
@@ -168,29 +192,17 @@ class LoginViewModelTest : BaseApiTest() {
 
     }
 
-    /**
-     * Test for case connect with valid time out ( 4s < Server Time out = 5s )
-     */
     @Test
-    fun getToken_succeededResponse_timeout() {
+    fun getToken_delay() {
 
+        val testScheduler = TestScheduler()
+        val single = Single.just(Token("access token", "refresh token")).delay(5, TimeUnit.SECONDS, testScheduler)
         val testObserver = TestObserver<Token>()
-
-        // Mock a response with status 200
-        val mockResponse = MockResponse()
-            .setResponseCode(200)
-            .setBodyDelay(4, TimeUnit.SECONDS)
-            .throttleBody(1024, 1, TimeUnit.SECONDS)
-            .setBody(getJsonFromResource("login.json"))
-
-        // Enqueue request
-        mockWebServer.enqueue(mockResponse)
 
         /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenAnswer {
-            authenApi.login("dat@gmail.com", "123456").toObservable().subscribe(testObserver)
-            testObserver.awaitTerminalEvent(2, TimeUnit.SECONDS)
-            Single.just(testObserver.values()[0])
+            single.subscribe(testObserver)
+            single
         }
 
         mockkObject(LoginValidator)
@@ -201,22 +213,19 @@ class LoginViewModelTest : BaseApiTest() {
         loginViewModel.login("dat@gmail.com", "123456")
 
         /** test */
-        // equal http request
-        val request = mockWebServer.takeRequest()
-        Assert.assertEquals("/login?email=dat%40gmail.com&password=123456", request.path)
-
-        // equal token response
-        testObserver.assertValue { response ->
-            response.accessToken == "accessToken_response" &&
-                    response.refreshToken == "refreshToken_response"
-        }
-
-        // viewModel test
         verify(authenRepository).login("dat@gmail.com", "123456")
 
+        testScheduler.advanceTimeBy(4990, TimeUnit.MILLISECONDS)
+        testObserver.assertNotTerminated()
+        Assert.assertEquals(true, loginViewModel.isLoading.value)
+
+        testScheduler.advanceTimeBy(20, TimeUnit.MILLISECONDS)
+        testObserver.assertComplete()
+        Assert.assertEquals(false, loginViewModel.isLoading.value)
+
         assert(
-            loginViewModel.token!!.accessToken == "accessToken_response" &&
-                    loginViewModel.token!!.refreshToken == "refreshToken_response"
+            loginViewModel.token!!.accessToken == "access token" &&
+                    loginViewModel.token!!.refreshToken == "refresh token"
         )
     }
 
@@ -226,10 +235,6 @@ class LoginViewModelTest : BaseApiTest() {
      */
     @Test
     fun getToken_exceed_timeout() {
-
-        // define error for response, but in fact, it is not returned in `when` because connect failed
-        val errorResponse = Throwable(" Connect Timeout")
-
         val testObserver = TestObserver<Token>()
 
         // Mock a response with status 200
@@ -246,12 +251,16 @@ class LoginViewModelTest : BaseApiTest() {
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenAnswer {
             authenApi.login("dat@gmail.com", "123456").toObservable().subscribe(testObserver)
             testObserver.awaitTerminalEvent(2, TimeUnit.SECONDS)
-            Single.error<Throwable>(errorResponse)
+            Single.error<Throwable>(testObserver.errors()[0])
         }
 
         mockkObject(LoginValidator)
         every { LoginValidator.isValidEmail(any()) } returns true
         every { LoginValidator.isValidPassword(any()) } returns true
+
+        /** pre-test */
+        Assert.assertEquals(false, loginViewModel.isLoginSuccess.value)
+        Assert.assertEquals(null, loginViewModel.error.value)
 
         /** action */
         loginViewModel.login("dat@gmail.com", "123456")
@@ -265,11 +274,14 @@ class LoginViewModelTest : BaseApiTest() {
         testObserver.apply {
             assertNoValues()
             assertNotComplete()
+            Assert.assertEquals("timeout", testObserver.errors()[0].message)
         }
 
         // viewModel test
         verify(authenRepository).login("dat@gmail.com", "123456")
-
-        assert(loginViewModel.token == null)
+        assert(
+            loginViewModel.token == null &&
+                    loginViewModel.error.value == "timeout"
+        )
     }
 }
