@@ -9,7 +9,7 @@ import com.login.mvvm.login_test.data.model.Token
 import com.login.mvvm.login_test.data.repository.AuthenRepository
 import com.login.mvvm.login_test.rx.SchedulerProviderImpl
 import com.login.mvvm.login_test.screen.ui.fragment.login.LoginViewModel
-import com.login.mvvm.login_test.utils.LoginValidator
+import com.login.mvvm.login_test.utils.*
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -28,6 +28,7 @@ import org.mockito.Spy
 import io.reactivex.Single
 import io.reactivex.schedulers.TestScheduler
 import okhttp3.ResponseBody
+import org.mockito.InjectMocks
 import org.mockito.Mockito.*
 import org.mockito.junit.MockitoJUnitRunner
 import org.robolectric.annotation.Config
@@ -250,7 +251,7 @@ class LoginViewModelTest : BaseApiTest() {
         /** define behavior */
         `when`(authenRepository.login(ArgumentMatchers.anyString(), ArgumentMatchers.anyString())).thenAnswer {
             authenApi.login("dat@gmail.com", "123456").toObservable().subscribe(testObserver)
-            testObserver.awaitTerminalEvent(2, TimeUnit.SECONDS)
+            testObserver.awaitTerminalEvent()
             Single.error<Throwable>(testObserver.errors()[0])
         }
 
