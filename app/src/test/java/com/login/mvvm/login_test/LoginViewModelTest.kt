@@ -72,6 +72,10 @@ class LoginViewModelTest : BaseApiTest() {
         loginViewModel = LoginViewModel(resources, authenRepository, scheduleProvider)
     }
 
+
+    @Mock
+    private lateinit var observer: androidx.lifecycle.Observer<Boolean>
+
     /**
      * Test for case connect api and login succeeded
      */
@@ -92,9 +96,12 @@ class LoginViewModelTest : BaseApiTest() {
 
         /** action */
         loginViewModel.login("tiendat@gmail.com", "12345678")
+        loginViewModel.isLoginSuccess.observeForever(observer)
 
         /** test */
         verify(authenRepository).login("tiendat@gmail.com", "12345678")
+
+        verify(observer).onChanged(true)
 
         Assert.assertEquals(true, loginViewModel.isLoginSuccess.value)
 
